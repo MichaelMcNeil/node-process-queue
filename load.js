@@ -1,9 +1,23 @@
 var redis = require('redis')
-    , rc = redis.createClient();
+    , cluster = require('cluster')
+    , numMsgs = process.argv[2] || 1000000
+    , benchmark = require('../node-benchmark/benchmark.js')
+    , i
+    , numForks = 8;
 
-var i;
-for(i = 0; i < 1000000; i++){
-    rc.lpush('messages', i);
+if (cluster.isMaster) {
+    // Fork workers.
+    for (var i = 0; i < numForks; i++) {
+        worker = cluster.fork();
+
+        worker.on('message', function(msg){
+            benchmark.tick();
+        });
+    }
 }
-
-console.log('done');
+else{
+    rc = redis.createClient();
+    for(i = 0; i < numMsgs/numForks; i++){
+        rc.lpush('messages', i, process.send(null));
+    }
+}

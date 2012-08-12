@@ -1,29 +1,31 @@
 var redis = require('redis'),
-    rc = redis.createClient(),
     cluster = require('cluster'),
-    numCPUs = require('os').cpus().length;
+    numCPUs = require('os').cpus().length,
+    benchmark = require('../node-benchmark/benchmark.js'),
+    numForks = process.argv[2] || numCPUs;
 
-var processQueue = function(){
+var processQueue = function(rc){
     rc.brpop('messages', 0, function(err, result){
+        process.send(null);
+
         if(err){
             console.log(err);
         }else{
-            console.log(result);
-            processQueue();
+            processQueue(rc);
         }
     });
 };
 
 if (cluster.isMaster) {
     // Fork workers.
-    for (var i = 0; i < numCPUs; i++) {
-        cluster.fork();
-    }
+    for (var i = 0; i < numForks; i++) {
+        worker = cluster.fork();
 
-    cluster.on('exit', function(worker, code, signal){
-        console.log('worker ' + worker.process.pid + ' died');
-    });
+        worker.on('message', function(msg){
+            benchmark.tick();
+        });
+    }
 }
 else{
-    processQueue();
+    processQueue(redis.createClient());
 }
